@@ -88,6 +88,7 @@ fn check_collision(
     }
 }
 
+// TODO infinite memory leak
 #[derive(Resource, Default)]
 struct HitList(HashSet<BulletHit>);
 
