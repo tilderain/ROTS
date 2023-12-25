@@ -44,6 +44,7 @@ pub fn q_e_rotate_cam(
     config: Res<Config>,
 ) {
     let mut rotation = 0.0;
+
     if config.pressed(&keyboard_input, GameAction::RotateLeft) {
         rotation += 1.0;
     }
@@ -141,7 +142,8 @@ pub fn player_movement(
         jumper.timer.tick(time.delta());
         if config.pressed(&keyboard_input, GameAction::Jump) {
             if jumper.timer.finished() {
-                // TODO jump
+                // TODO does this reset with the overflow from the extra time.delta()?
+                // or are we really jumping at slightly slower rate?
                 jumper.timer.reset();
             }
         }
@@ -153,6 +155,7 @@ pub fn player_movement(
 
             transform.translation +=
                 Vec3::new(movem.x, 0.0, movem.y) * PLAYER_SPEED * time.delta_seconds();
+
             // point in the direction you are moving
             transform.rotation = Quat::from_rotation_y(movem.x.atan2(movem.y));
 
@@ -160,6 +163,8 @@ pub fn player_movement(
         } else {
             move_vector
         };
+
+        transform.translation.y = jumper.get_y() + 1.0;
 
         // only change this if we have to. This will trigger a packet to be sent
         if movement.0 != final_move {

@@ -21,30 +21,62 @@ pub struct CastingNetworkPlugin;
 impl Plugin for CastingNetworkPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SharedCastingPlugin)
-            .insert_resource(HP(3))
-            .add_event::<Die>()
+            .add_event::<WeTeleported>()
             .add_systems(
                 Update,
-                (on_someone_cast, on_someone_hit, on_die)
+                (on_someone_cast, on_someone_hit, on_us_tp)
                     .run_if(in_state(GameState::ClientConnected)),
             );
     }
 }
 
+#[derive(Event)]
+struct WeTeleported(Vec3);
+
+fn on_us_tp(
+    mut local_player: Query<&mut Transform, With<Player>>,
+    mut ev_r: EventReader<WeTeleported>,
+) {
+    for ev in ev_r.read() {
+        local_player.single_mut().translation = ev.0;
+    }
+}
+
 fn on_someone_cast(
     mut someone_cast: ERFE<SomeoneCast>,
-    other_players: Query<(Entity, &NetEntId, &Transform)>,
+    other_players: Query<(Entity, &NetEntId, &Transform, Has<Player>), With<AnyPlayer>>,
     mut commands: Commands,
     //TODO dont actually spawn a cube on cast
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ev_w: EventWriter<WeTeleported>,
+    asset_server: Res<AssetServer>,
 ) {
     for cast in someone_cast.read() {
-        for (_ply_ent, ply_net_ent, ply_tfm) in &other_players {
+        for (_ply_ent, ply_net_ent, ply_tfm, is_us) in &other_players {
             if &cast.event.caster_id == ply_net_ent {
                 match cast.event.cast {
                     shared::event::server::Cast::Teleport(target) => {
-                        info!(?target, "Someone teleported")
+                        // Spawn a sound at both the source and dest
+                        // TODO only play both if you go a far enough distance
+                        for loc in &[target /* ply_tfm.translation */] {
+                            commands.spawn((
+                                TransformBundle::from_transform(Transform::from_translation(*loc)),
+                                //Transform::from_xyz(0.0, 0.0, 0.0),
+                                AudioBundle {
+                                    source: asset_server.load("sounds/teleport.ogg"),
+                                    settings: PlaybackSettings::DESPAWN.with_spatial(true),
+                                    ..default()
+                                },
+                            ));
+                        }
+
+                        match is_us {
+                            true => {
+                                ev_w.send(WeTeleported(target));
+                            }
+                            false => info!("Someone else teleported"),
+                        }
                     }
                     shared::event::server::Cast::Shoot(ref dat) => {
                         let cube = PbrBundle {
@@ -63,32 +95,20 @@ fn on_someone_cast(
                             // TODO Add a netentid for referencing this item later
                         ));
                     }
+                    _ => {}
                 }
             }
         }
     }
 }
 
-#[derive(Resource, Clone)]
-struct HP(i32);
-
-#[derive(Event)]
-struct Die;
-
-fn on_die(mut die: EventReader<Die>, mut me: Query<&mut Transform, With<Player>>) {
-    for _death in die.read() {
-        me.single_mut().translation = Vec3::new(0.0, 1.0, 0.0)
-    }
-}
-
 fn on_someone_hit(
     mut someone_hit: ERFE<BulletHit>,
-    all_plys: Query<(&NetEntId, &PlayerName, Has<Player>), With<AnyPlayer>>,
+    all_plys: Query<(&NetEntId, &Transform, &PlayerName, Has<Player>), With<AnyPlayer>>,
     mut notifs: EventWriter<Notification>,
     bullets: Query<(Entity, &NetEntId, &CasterNetId)>,
-    mut temp_hp: ResMut<HP>,
-    mut die: EventWriter<Die>,
-    //mut commands: Commands,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
 ) {
     for hit in someone_hit.read() {
         let mut bullet_caster_id = None;
@@ -107,19 +127,20 @@ fn on_someone_hit(
         let mut attacker_name = None;
         let mut defender_name = None;
 
-        for (ply_id, PlayerName(name), is_us) in &all_plys {
+        for (ply_id, ply_tfm, PlayerName(name), is_us) in &all_plys {
             if ply_id == &hit.event.player {
                 defender_name = Some(name);
                 if is_us {
-                    // TODO clientside damage!
-                    temp_hp.0 -= 1;
-                    if temp_hp.0 <= 0 {
-                        notifs.send(Notification(format!("We died!")));
-                        temp_hp.0 = 3;
-                        die.send(Die);
-                    } else {
-                        notifs.send(Notification(format!("HP: {}", temp_hp.0)));
-                    }
+                    commands.spawn(AudioBundle {
+                        source: asset_server.load("sounds/hit.ogg"),
+                        ..default()
+                    });
+                    info!("We got hit!");
+                } else {
+                    commands.spawn(AudioBundle {
+                        source: asset_server.load("sounds/hitmarker.ogg"),
+                        ..default()
+                    });
                 }
             }
 

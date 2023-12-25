@@ -9,6 +9,7 @@ pub mod event;
 
 #[cfg(feature = "mio-net")]
 pub mod netlib;
+pub mod stats;
 
 #[cfg(not(feature = "mio-net"))]
 mod fakenetlib;
@@ -31,6 +32,8 @@ pub enum GameAction {
     UnlockCursor,
 
     Fire1,
+    Fire2,
+    Mod1,
     Special1,
 }
 
@@ -99,6 +102,8 @@ static DEFAULT_BINDS: Lazy<Keybinds> = Lazy::new(|| {
         (GameAction::ChangeCamera, vec![KeyCode::C]),
         (GameAction::UnlockCursor, vec![KeyCode::X]),
         (GameAction::Fire1, vec![KeyCode::T]),
+        (GameAction::Fire2, vec![KeyCode::E]),
+        (GameAction::Mod1, vec![KeyCode::ShiftLeft]),
     ])
 });
 
@@ -128,6 +133,10 @@ impl Config {
         serde_yaml::to_string(&Self::default()).unwrap()
     }
 
+    pub fn debug_keybinds(&self) {
+        info!(?self.keybindings);
+    }
+
     pub fn load_from_main_dir() -> Self {
         let mut path = current_dir().unwrap();
         path.push("config.yaml");
@@ -136,13 +145,22 @@ impl Config {
         // Try to open config file
         match OpenOptions::new().read(true).open(&path) {
             Ok(file) => match serde_yaml::from_reader(file) {
-                Ok(v) => v,
+                Ok(user_config) => {
+                    let mut user_config: Config = user_config;
+
+                    // For each keybind, assign the default if not bound.
+                    let mut all_binds = DEFAULT_BINDS.clone();
+                    all_binds.extend(user_config.keybindings);
+                    user_config.keybindings = all_binds;
+
+                    user_config
+                }
                 Err(e) => {
-                    error!("====================================");
-                    error!("===  Failed to load your config  ===");
-                    error!("====================================");
-                    error!(?e);
-                    error!("Here is the default config:");
+                    eprintln!("====================================");
+                    eprintln!("===  Failed to load your config  ===");
+                    eprintln!("====================================");
+                    eprintln!("{:?}", e);
+                    eprintln!("Here is the default config:");
                     println!("{}", Self::default_config_str());
                     panic!("Please fix the above error and restart your program");
                 }

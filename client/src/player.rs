@@ -13,7 +13,7 @@ pub struct Player {
     pub current_chunk: ChunkPos,
 }
 
-#[derive(Reflect, Component)]
+#[derive(Reflect, Component, Debug)]
 pub struct PlayerName(pub String);
 
 #[derive(Component)]
@@ -36,17 +36,10 @@ pub struct Animation(Handle<AnimationClip>);
 
 pub fn spawn_player_sprite(
     mut commands: Commands,
-    // mut meshes: ResMut<Assets<Mesh>>,
-    // mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: ResMut<AssetServer>,
+    //mut meshes: ResMut<Assets<Mesh>>,
+    //mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // let cube = PbrBundle {
-    // mesh: meshes.add(Mesh::from(shape::Cube { size: 1.0 })),
-    // material: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
-    // transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
-    // ..Default::default()
-    // };
-
     commands.insert_resource(Animation(asset_server.load("tadpole.gltf#Animation0")));
 
     commands.spawn((
@@ -64,9 +57,10 @@ pub fn spawn_player_sprite(
         Player::default(),
         crate::cameras::FaceCamera,
         crate::physics::Jumper {
-            timer: Timer::from_seconds(1.0, TimerMode::Once),
+            timer: Timer::from_seconds(1.05, TimerMode::Once),
         },
         AnyPlayer,
+        SpatialListener::new(1.0),
     ));
 }
 

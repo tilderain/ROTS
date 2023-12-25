@@ -17,16 +17,20 @@ pub struct SkillsPlugin;
 
 impl Plugin for SkillsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            cast_skills.run_if(just_pressed(shared::GameAction::Fire1)),
-        )
-        .add_systems(Update, (start_local_skill_cast_animation,))
-        .add_systems(
-            Update,
-            (send_network_packet).run_if(in_state(GameState::ClientConnected)),
-        )
-        .add_event::<StartAnimation>();
+        app.add_event::<StartAnimation>()
+            .add_systems(
+                Update,
+                cast_skill_1.run_if(just_pressed(shared::GameAction::Fire1)),
+            )
+            .add_systems(
+                Update,
+                cast_skill_2.run_if(just_pressed(shared::GameAction::Fire2)),
+            )
+            .add_systems(Update, (start_local_skill_cast_animation,))
+            .add_systems(
+                Update,
+                (send_network_packet).run_if(in_state(GameState::ClientConnected)),
+            );
     }
 }
 
@@ -40,7 +44,7 @@ pub enum Actions {
 
 impl Actions {
     fn is_cancellable(&self) -> bool {
-        return true;
+        true
     }
 }
 
@@ -52,7 +56,32 @@ const fn just_pressed(ga: shared::GameAction) -> impl Fn(Res<Input<KeyCode>>, Re
     move |keyboard_input, config| config.just_pressed(&keyboard_input, ga.clone())
 }
 
-fn cast_skills(
+fn cast_skill_2(
+    keyboard_input: Res<Input<KeyCode>>,
+    config: Res<Config>,
+    player: Query<(Entity, &Player, &Transform, Option<&Actions>)>,
+    aim_dir: Query<&ClientAimDirection>,
+    mut ev_sa: EventWriter<StartAnimation>,
+) {
+    let (_ent, _ply_face, _transform, _actions) = player.single();
+    let aim_dir = aim_dir.single().0;
+
+    if config.pressed(&keyboard_input, shared::GameAction::MoveBackward) {
+        let target = _transform.translation
+            + Vec3 {
+                x: aim_dir.cos(),
+                y: 0.0,
+                z: -aim_dir.sin(),
+            } * 10.0;
+
+        let event = Cast::Teleport(target);
+        ev_sa.send(StartAnimation(event));
+    }
+}
+
+fn cast_skill_1(
+    keyboard_input: Res<Input<KeyCode>>,
+    config: Res<Config>,
     player: Query<(Entity, &Player, &Transform, Option<&Actions>)>,
     aim_dir: Query<&ClientAimDirection>,
     mut ev_sa: EventWriter<StartAnimation>,
@@ -74,22 +103,24 @@ fn cast_skills(
             //Ok
         }
     }
-
     let aim_dir = aim_dir.single().0;
-    let target = _transform.translation
-        + Vec3 {
-            x: aim_dir.cos(),
-            y: 0.0,
-            z: -aim_dir.sin(),
-        };
 
-    let shooting_data = ShootingData {
-        shot_from: _transform.translation,
-        target,
-    };
-    let event = Cast::Shoot(shooting_data);
-    info!(?event);
-    ev_sa.send(StartAnimation(event));
+    if config.pressed(&keyboard_input, shared::GameAction::MoveBackward) {
+    } else {
+        let target = _transform.translation
+            + Vec3 {
+                x: aim_dir.cos(),
+                y: 0.0,
+                z: -aim_dir.sin(),
+            };
+
+        let shooting_data = ShootingData {
+            shot_from: _transform.translation,
+            target,
+        };
+        let event = Cast::Shoot(shooting_data);
+        ev_sa.send(StartAnimation(event));
+    }
 }
 
 fn start_local_skill_cast_animation(

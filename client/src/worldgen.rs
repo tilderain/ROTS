@@ -1,13 +1,13 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, render::mesh::shape::Plane};
 use bevy_xpbd_3d::components::Collider;
 use std::collections::HashMap;
 
-use crate::player::Player;
+use crate::{cli::CliArgs, player::Player};
 const CHUNK_SIZE: i32 = 1;
 
 pub struct Chunk {
-    position: Vec3,
-    size: f32,
+    pub position: Vec3,
+    pub size: f32,
 }
 #[derive(PartialEq, Eq, Hash, Reflect)]
 pub struct ChunkPos(pub i32, pub i32, pub i32);
@@ -36,7 +36,7 @@ impl Plugin for WorldGenPlugin {
             material_purp: Handle::default(),
             material_black: Handle::default(),
         })
-        .add_systems(Update, update_chunks)
+        .add_systems(Update, update_chunks.run_if(should_run_update))
         .add_systems(Startup, init_mats);
     }
 }
@@ -45,6 +45,8 @@ fn init_mats(
     mut world: ResMut<WorldMaterialAssets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut commands: Commands,
+    args: Res<CliArgs>,
 ) {
     world.material_black = materials.add(Color::rgb(0.0, 0.0, 0.0).into());
     world.material_purp = materials.add(Color::rgb(0.5, 0.0, 0.5).into());
@@ -52,6 +54,23 @@ fn init_mats(
         size: CHUNK_SIZE as f32,
         subdivisions: 0,
     }));
+
+    if args.optimize_floor() {
+        commands.spawn((PbrBundle {
+            transform: Transform::from_xyz(0.0, -0.01, 0.0),
+            mesh: meshes.add(Mesh::from(Plane {
+                size: (CHUNK_SIZE * 100) as f32,
+                subdivisions: 1,
+            })),
+            material: materials.add(Color::hex("#1f7840").unwrap().into()),
+            ..Default::default()
+        },));
+    }
+}
+
+// This is an optimization in debug mode
+fn should_run_update(args: Res<CliArgs>) -> bool {
+    !args.optimize_floor()
 }
 
 fn update_chunks(
